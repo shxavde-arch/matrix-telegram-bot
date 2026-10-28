@@ -97,8 +97,12 @@ async def forward_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("Ваше сообщение дошло до администраторов!")
 
-# --- Запуск бота в фоне ---
-def run_bot():
+# --- Запуск ---
+def run_flask():
+    port = int(os.environ.get("PORT", 5000))
+    flask_app.run(host="0.0.0.0", port=port)
+
+def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
@@ -117,6 +121,5 @@ def run_bot():
     app.run_polling()
 
 if __name__ == "__main__":
-    threading.Thread(target=run_bot, daemon=True).start()
-    port = int(os.environ.get("PORT", 5000))
-    flask_app.run(host="0.0.0.0", port=port)
+    threading.Thread(target=run_flask, daemon=True).start()
+    main()

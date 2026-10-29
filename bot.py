@@ -84,7 +84,7 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- 2. Триггеры в Группе 1 ---
 async def triggers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-   if not update.message or not update.message.text:
+    if not update.message or not update.message.text:
         return
     if update.effective_chat.id != GROUP_1_ID:
         return
@@ -92,6 +92,7 @@ async def triggers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     answer = TRIGGERS.get(text)
     if answer:
         await update.message.reply_text(answer)
+
 
 # --- 3. Приветствие в ЛС по /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

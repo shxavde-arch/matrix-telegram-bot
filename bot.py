@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import re
 from flask import Flask
 from telegram import Update
 from telegram.ext import (
@@ -19,24 +20,24 @@ GROUP_2_ID = int(os.environ.get("GROUP_2_ID", "0"))
 # --- Триггеры и ответы ---
 TRIGGERS = {
     "норма": (
-        "📊 Норма активности:\n"
+        " ✦ норма активности:\n"
         "• 100 сообщений в неделю\n"
         "• 200 сообщений в неделю для админов\n"
-        "• Для ролевиков с учётом 2 постов в неделю норма снижается до 40 сообщений\n"
-        "• Чистка в воскресенье в 19:00 по московскому времени"
+        "• для ролевиков с учётом 2 постов в неделю норма снижается до 40 сообщений\n"
+        "• чистка в воскресенье в 19:00 по московскому времени"
     ),
-    "дискорд": "🔗 Ссылка на наш Discord-сервер: https://discord.gg/t6y6Tbg8Ew",
+    "дискорд": " ✦ ссылка на наш Discord-сервер: https://discord.gg/t6y6Tbg8Ew",
     "рест": (
-        "🛌 Чтобы взять рест, обратитесь к владельцу.\n"
-        "Внимание: взять рест можно только на две недели. "
-        "Бывают исключения на бессрочный рест."
+        " ✦ чтобы взять рест, обратитесь к владельцу.\n"
+        "внимание: взять рест можно только на две недели. "
+        "бывают исключения на бессрочный рест из-за срочных причин."
     ),
     "майнкрафт": (
-        "⛏️ Версия нашего Minecraft-сервера: 1.21.6\n"
+        " ✦ версия нашего Minecraft-сервера: 1.21.6\n"
         "Адрес: matrix-hCsi.aternos.me:47280\n"
         "Для включения обратитесь к Итто."
     ),
-    "инициалы": "🅼🆇 Если вы очень патриотичны, можете поставить инициал MX.",
+    "инициалы": " ✦ если вы очень патриотичны, можете поставить инициал MX.",
 }
 
 logging.basicConfig(level=logging.INFO)
@@ -54,15 +55,15 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
         if not member.is_bot:
             text = (
-                f"Добро пожаловать в Matrix, {member.first_name}! "
-                "Надеюсь, вам здесь понравится и вы приживетесь🩷\n\n"
-                "Если у вас возникнут трудности или вопросы, в любой момент "
+                f"добро пожаловать в Matrix, {member.first_name}! "
+                "надеюсь, вам здесь понравится и вы приживетесь🩷\n\n"
+                "если у вас возникнут трудности или вопросы, в любой момент "
                 "вы можете обратиться к нашей администрации, она рада вам помочь.\n\n"
-                "Несколько вопросов для знакомства:\n"
-                "– Как к вам обращаться?\n"
-                "– Какие у вас увлечения?\n"
-                "– Как проходит день?\n\n"
-                "В чате существуют автоматические ответы, список: "
+                "несколько вопросов для знакомства:\n"
+                "– как к вам обращаться?\n"
+                "– какие у вас увлечения?\n"
+                "– как проходит день?\n\n"
+                "в чате существуют автоматические ответы, список: "
                 "норма, дискорд, инициалы, майнкрафт, рест."
             )
             await update.message.reply_text(text)
@@ -71,16 +72,15 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def triggers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != GROUP_1_ID or not update.message.text:
         return
-    text = update.message.text.lower()
-    for key, answer in TRIGGERS.items():
-        if key in text:
-            await update.message.reply_text(answer)
-            break
+    text = update.message.text.lower().strip().strip("!?.,… ")
+    answer = TRIGGERS.get(text)
+    if answer:
+        await update.message.reply_text(answer)
 
 # --- 3. Приветствие в ЛС по /start ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Доброго времени суток! Здесь вы можете оставить заявку или жалобу."
+        "доброго времени суток! здесь вы можете оставить заявку или жалобу. наши администраторы ответят вам как можно скорее."
     )
 
 # --- 4. Пересылка ЛС в Группу 2 + подтверждение ---
@@ -89,13 +89,53 @@ async def forward_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.effective_user
-    msg = f"📩 от {user.full_name} (@{user.username}):\n\n{update.message.text}"
+    username = f"@{user.username}" if user.username else "без username"
+    msg = (
+        f"📩 от {user.full_name} ({username}) [ID:{user.id}]:\n\n"
+        f"{update.message.text}\n\n"
+        "➤ чтобы ответить, сделайте реплай на это сообщение."
+    )
     try:
-        await context.bot.send_message(chat_id=GROUP_2_ID, text=msg)
+        sent = await context.bot.send_message(chat_id=GROUP_2_ID, text=msg)
+        context.bot_data.setdefault("threads", {})[sent.message_id] = user.id
     except Exception as e:
-        logging.error(f"Ошибка пересылки: {e}")
+        logging.error(f"ошибка пересылки: {e}")
 
-    await update.message.reply_text("Ваше сообщение дошло до администраторов!")
+    await update.message.reply_text("ваше сообщение дошло до администраторов ♡. среднее время ожидания ответа – 10 минут.")
+
+async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    original = msg.reply_to_message
+    if not original or not msg.text:
+        return
+
+    threads = context.bot_data.setdefault("threads", {})
+
+    user_id = None
+    if original.text:
+        match = re.search(r"\[ID:(\d+)\]", original.text)
+        if match:
+            user_id = int(match.group(1))
+
+    if user_id is None:
+        user_id = threads.get(original.message_id)
+
+    if user_id is None:
+        return
+
+    threads[msg.message_id] = user_id
+
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=msg.text,
+        )
+        await msg.reply_text("ответ доставлен администраторам ✰")
+    except Exception as e:
+        logging.error(f"ошибка ответа: {e}")
+        await msg.reply_text("не удалось отправить (возможно, человек заблокировал бота).")
+
+
 
 # --- Запуск ---
 def run_flask():
@@ -118,7 +158,18 @@ def main():
             forward_dm,
         )
     )
-    app.run_polling()
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.Chat(GROUP_2_ID) & filters.REPLY,
+            admin_reply,
+        )
+    )
+
+    async def on_error(update, context):
+        logging.error("Ошибка в боте", exc_info=context.error)
+
+    app.add_error_handler(on_error)
+    app.run_polling(drop_pending_updates=True, bootstrap_retries=-1)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()

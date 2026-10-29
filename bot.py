@@ -84,7 +84,9 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- 2. Триггеры в Группе 1 ---
 async def triggers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.id != GROUP_1_ID or not update.message.text:
+   if not update.message or not update.message.text:
+        return
+    if update.effective_chat.id != GROUP_1_ID:
         return
     text = update.message.text.lower().strip().strip("!?.,… ")
     answer = TRIGGERS.get(text)
@@ -193,6 +195,8 @@ async def cleanup_reminder(context: ContextTypes.DEFAULT_TYPE):
 
 # --- Созыв по слову «калл» ---
 async def call_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
     chat = update.effective_chat
     member = await chat.get_member(update.effective_user.id)
     if member.status not in ("administrator", "creator"):
@@ -216,14 +220,42 @@ def main():
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND & filters.Chat(GROUP_1_ID),
+            filters.TEXT & ~filters.COMMAND & filters.Chat(GROUP_1_ID) & ~filters.UpdateType.EDITED_MESSAGE,
             triggers,
         )
     )
     app.add_handler(
         MessageHandler(
-            filters.Regex(r"(?i)^калл(\s|$)") & filters.Chat(GROUP_1_ID),
+            filters.Regex(r"(?i)^калл(\s|$)") & filters.Chat(GROUP_1_ID) & ~filters.UpdateType.EDITED_MESSAGE,
             call_command,
         ),
         group=1,
     )
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+            forward_dm,
+        )
+    )
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.Chat(GROUP_2_ID) & filters.REPLY,
+            admin_reply,
+        )
+    )
+
+    app.job_queue.run_daily(
+        cleanup_reminder,
+        time=datetime.time(12, 0, tzinfo=ZoneInfo("Europe/Moscow")),
+        days=(0,),
+    )
+
+    async def on_error(update, context):
+        logging.error("Ошибка в боте", exc_info=context.error)
+
+    app.add_error_handler(on_error)
+    app.run_polling(drop_pending_updates=True, bootstrap_retries=-1)
+
+if __name__ == "__main__":
+    threading.Thread(target=run_flask, daemon=True).start()
+    main()

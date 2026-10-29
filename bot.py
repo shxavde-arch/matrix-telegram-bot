@@ -2,6 +2,11 @@ import os
 import logging
 import threading
 import re
+import random
+import asyncio
+import datetime
+from zoneinfo import ZoneInfo
+
 from flask import Flask
 from telegram import Update
 from telegram.ext import (
@@ -38,7 +43,16 @@ TRIGGERS = {
         "Для включения обратитесь к Итто."
     ),
     "инициалы": " ✦ если вы очень патриотичны, можете поставить инициал MX.",
+    "хуйня": "не выражайся",
 }
+
+EMOJIS = [
+    "🌊", "🪐", "⭐️", "🌙", "☁️", "🌫️", "🌄", "🌌", "🎆", "🔮", "💌",
+    "🩷", "🤍", "🖤", "🩶", "💜", "💖", "🎐", "🗝️", "⛓️", "💎", "🌠",
+    "🎼", "🍒", "✨", "⚡️", "🌷", "🪷", "🐇", "🦢", "🕊️", "🌂", "🕯️",
+    "🎀", "💿", "🗻", "🪽", "🕸️", "🪼", "🐁", "🐚", "❄️", "🌬️", "🫧",
+]
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -135,7 +149,58 @@ async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"ошибка ответа: {e}")
         await msg.reply_text("не удалось отправить (возможно, человек заблокировал бота).")
 
+# --- 6. Запоминаем, кто писал в Группе 1 ---
+async def track_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if user and not user.is_bot:
+        context.bot_data.setdefault("members", {})[user.id] = user.first_name
 
+# --- 7. Тег всех, кто писал (пачками по 5) ---
+async def tag_all(context: ContextTypes.DEFAULT_TYPE, chat_id: int, header: str = ""):
+    ids = list(context.bot_data.get("members", {}))
+    if not ids:
+        return
+
+    emojis = EMOJIS[:]
+    random.shuffle(emojis)
+
+    if header:
+        await context.bot.send_message(chat_id=chat_id, text=header)
+    for i in range(0, len(ids), 5):
+        mentions = " ".join(
+            f'<a href="tg://user?id={uid}">{emojis[(i + n) % len(emojis)]}</a>'
+            for n, uid in enumerate(ids[i:i + 5])
+        )
+        await context.bot.send_message(chat_id=chat_id, text=mentions, parse_mode="HTML")
+        await asyncio.sleep(0.5)
+
+async def all_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.id != GROUP_1_ID:
+        return
+    member = await chat.get_member(update.effective_user.id)
+    if member.status not in ("administrator", "creator"):
+        return
+    await tag_all(context, chat.id)
+
+# --- 8. Напоминание о чистке ---
+async def cleanup_reminder(context: ContextTypes.DEFAULT_TYPE):
+    await tag_all(
+        context,
+        GROUP_1_ID,
+        "cегодня в 19:00 по мск чистка. проверьте свою норму активности.",
+    )
+
+# --- Созыв по слову «калл» ---
+async def call_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    member = await chat.get_member(update.effective_user.id)
+    if member.status not in ("administrator", "creator"):
+        return
+
+    text = update.message.text.strip()[4:].strip()  # всё после «калл»
+    header = f"📢 {text}" if text else ""
+    await tag_all(context, chat.id, header)
 
 # --- Запуск ---
 def run_flask():
@@ -144,7 +209,10 @@ def run_flask():
 
 def main():
     app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(MessageHandler(filters.Chat(GROUP_1_ID), track_members), group=-1)
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("all", all_command))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
     app.add_handler(
         MessageHandler(
@@ -154,23 +222,8 @@ def main():
     )
     app.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-            forward_dm,
-        )
+            filters.Regex(r"(?i)^калл(\s|$)") & filters.Chat(GROUP_1_ID),
+            call_command,
+        ),
+        group=1,
     )
-    app.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND & filters.Chat(GROUP_2_ID) & filters.REPLY,
-            admin_reply,
-        )
-    )
-
-    async def on_error(update, context):
-        logging.error("Ошибка в боте", exc_info=context.error)
-
-    app.add_error_handler(on_error)
-    app.run_polling(drop_pending_updates=True, bootstrap_retries=-1)
-
-if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    main()

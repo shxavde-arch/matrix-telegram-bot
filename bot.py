@@ -130,7 +130,7 @@ async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=user_id,
             text=msg.text,
         )
-        await msg.reply_text("ответ доставлен администраторам ✰")
+        await msg.reply_text("ответ доставлен. ✰")
     except Exception as e:
         logging.error(f"ошибка ответа: {e}")
         await msg.reply_text("не удалось отправить (возможно, человек заблокировал бота).")

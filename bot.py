@@ -102,7 +102,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- 4. Пересылка ЛС в Группу 2 + подтверждение ---
 async def forward_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private" or not update.message.text:
+    if not update.message or not update.message.text:
+        return
+    if update.effective_chat.type != "private":
         return
 
     user = update.effective_user
@@ -115,10 +117,15 @@ async def forward_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         sent = await context.bot.send_message(chat_id=GROUP_2_ID, text=msg)
         context.bot_data.setdefault("threads", {})[sent.message_id] = user.id
-    except Exception as e:
-        logging.error(f"ошибка пересылки: {e}")
 
-    await update.message.reply_text("ваше сообщение дошло до администраторов ♡. среднее время ожидания ответа – 10 минут.")
+        # если в сообщении есть юзернейм, пишем «анкета @юзернейм»
+        found = re.findall(r"@[A-Za-z0-9_]{5,32}", update.message.text)
+        for tag in dict.fromkeys(found):  # без повторов, в порядке появления
+            await context.bot.send_message(chat_id=GROUP_2_ID, text=f"анкета {tag}")
+    except Exception as e:
+        logging.error(f"Ошибка пересылки: {e}")
+
+    await update.message.reply_text("ваше сообщение дошло до администраторов ♡. среднее время ожидания ответа – 10 минут.!")
 
 async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -207,6 +214,25 @@ async def cleanup_reminder(context: ContextTypes.DEFAULT_TYPE):
         "cегодня в 19:00 по мск чистка. проверьте свою норму активности.",
     )
 
+    # --- Напоминание о вопросах дня (Группа 2) ---
+    # день: (роль, ID пользователя, вежливая форма)
+    DUTY = {
+        2: ("Итто", 8591074670, False),        # вторник
+        4: ("Венти", 5627043353, False),       # четверг
+        5: ("Колумбина", 2046423617, False),   # пятница
+        6: ("Блэйд", 5361148083, False),       # суббота
+        0: ("Дань Фэн", 7568241977, True),     # воскресенье
+    }
+
+    async def questions_reminder(context: ContextTypes.DEFAULT_TYPE):
+        role, user_id, formal = context.job.data
+        link = f'<a href="tg://user?id={user_id}">{role}</a>'
+        if formal:
+            text = f"Дорогой {link}, сегодня ваши вопросы дня, напоминаю вам."
+        else:
+            text = f"{link}, сегодня твои вопросы дня, напоминаю."
+        await context.bot.send_message(chat_id=GROUP_2_ID, text=text, parse_mode="HTML")
+
 # --- Созыв по слову «калл» ---
 async def call_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -263,6 +289,15 @@ def main():
         time=datetime.time(12, 0, tzinfo=ZoneInfo("Europe/Moscow")),
         days=(0,),
     )
+
+    for day, info in DUTY.items():
+            app.job_queue.run_daily(
+                questions_reminder,
+                time=datetime.time(10, 0, tzinfo=ZoneInfo("Europe/Moscow")),
+                days=(day,),
+                data=info,
+            )
+
 
     async def on_error(update, context):
         logging.error("Ошибка в боте", exc_info=context.error)

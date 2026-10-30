@@ -118,10 +118,16 @@ async def forward_dm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sent = await context.bot.send_message(chat_id=GROUP_2_ID, text=msg)
         context.bot_data.setdefault("threads", {})[sent.message_id] = user.id
 
-        # если в сообщении есть юзернейм, пишем «анкета @юзернейм»
+       # если в сообщении есть юзернейм, пишем «анкета @юзернейм»
         found = re.findall(r"@[A-Za-z0-9_]{5,32}", update.message.text)
         for tag in dict.fromkeys(found):  # без повторов, в порядке появления
-            await context.bot.send_message(chat_id=GROUP_2_ID, text=f"анкета {tag}")
+            await context.bot.send_message(
+                chat_id=GROUP_2_ID,
+                text=f"<code>анкета {tag}</code>",
+                parse_mode="HTML",
+            )
+
+
     except Exception as e:
         logging.error(f"Ошибка пересылки: {e}")
 

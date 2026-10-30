@@ -155,8 +155,21 @@ async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- 6. Запоминаем, кто писал в Группе 1 ---
 async def track_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if user and not user.is_bot:
-        context.bot_data.setdefault("members", {})[user.id] = user.first_name
+    if not user or user.is_bot or update.edited_message:
+        return
+
+    members = context.bot_data.setdefault("members", {})
+
+    text = ""
+    if update.message and update.message.text:
+        text = update.message.text.lower().strip().strip("!?.,… ")
+
+    if text == "анрег":
+        members.pop(user.id, None)
+        await update.message.reply_text("вы исключены из призыва ♥.")
+        return
+
+    members[user.id] = user.first_name
 
 # --- 7. Тег всех, кто писал (пачками по 5) ---
 async def tag_all(context: ContextTypes.DEFAULT_TYPE, chat_id: int, header: str = ""):
